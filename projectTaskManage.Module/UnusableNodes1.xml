@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Application>
+  <Views Id="Views">
+    <DetailView Id="StateMachineState_DetailView">
+      <Layout Id="Layout">
+        <LayoutGroup Id="Main">
+          <TabbedGroup Id="Tabs">
+            <LayoutGroup Id="Transitions" TextAlignMode="AlignLocal">
+              <LayoutItem Id="Transitions" TextAlignMode="AutoSize" />
+            </LayoutGroup>
+            <LayoutGroup Id="Appearances" TextAlignMode="AlignLocal">
+              <LayoutItem Id="Appearances" TextAlignMode="AutoSize" />
+            </LayoutGroup>
+          </TabbedGroup>
+        </LayoutGroup>
+      </Layout>
+    </DetailView>
+  </Views>
+</Application>
