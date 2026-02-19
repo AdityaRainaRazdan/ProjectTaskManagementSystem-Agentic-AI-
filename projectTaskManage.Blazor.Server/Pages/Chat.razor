@@ -1,0 +1,136 @@
+﻿@using DevExpress.ExpressApp
+@using projectTaskManage.Module.BusinessObjects
+@page "/chat"
+@inject LangChainService LangChainService
+@inject IObjectSpaceFactory ObjectSpaceFactory
+
+<h3>AI Chat</h3>
+
+<textarea @bind="UserMessage" rows="3" style="width:100%"></textarea>
+<button @onclick="SendMessage">Send</button>
+
+@if (ResponseMessage != null)
+{
+    <div class="mt-3">
+        <strong>Result:</strong>
+        <pre>@ResponseMessage</pre>
+    </div>
+}
+
+@code {
+    string UserMessage;
+    string ResponseMessage;
+
+    async Task SendMessage()
+    {
+        var result = await LangChainService.ParseAsync(UserMessage);
+
+        if (result != null)
+        {
+            await ExecuteCrud(result);
+            ResponseMessage = "Operation completed successfully.";
+        }
+        else
+        {
+            ResponseMessage = "Error parsing command.";
+        }
+    }
+
+    private async Task ExecuteCrud(CrudCommand command)
+    {
+        using var objectSpace = ObjectSpaceFactory.CreateObjectSpace(typeof(Employee));
+
+        if (command.Entity.ToLower() == "employee")
+        {
+            if (command.Action.ToLower() == "create")
+            {
+                var employee = objectSpace.CreateObject<Employee>();
+
+                foreach (var field in command.Fields)
+                {
+                    //  Map AI field names to actual property names
+                    string propertyName = field.Key.ToLower() switch
+                    {
+                        "name" => "FullName",
+                        "organization" => "Organization",
+                        _ => field.Key
+                    };
+
+                    var prop = typeof(Employee).GetProperty(
+    propertyName,
+    System.Reflection.BindingFlags.IgnoreCase |
+    System.Reflection.BindingFlags.Public |
+    System.Reflection.BindingFlags.Instance
+);
+
+                    if (prop != null && field.Value != null)
+                    {
+                        object rawValue = field.Value;
+
+                        if (rawValue is System.Text.Json.JsonElement jsonElement)
+                        {
+                            rawValue = jsonElement.ValueKind switch
+                            {
+                                System.Text.Json.JsonValueKind.String => jsonElement.GetString(),
+                                System.Text.Json.JsonValueKind.Number => jsonElement.GetDecimal(),
+                                System.Text.Json.JsonValueKind.True => true,
+                                System.Text.Json.JsonValueKind.False => false,
+                                _ => null
+                            };
+                        }
+
+                        if (rawValue != null)
+                        {
+                            var value = Convert.ChangeType(rawValue, prop.PropertyType);
+                            prop.SetValue(employee, value);
+                        }
+                    }
+                }
+
+                objectSpace.CommitChanges();
+            }
+
+
+            else if (command.Action.ToLower() == "read")
+            {
+                var employees = objectSpace.GetObjects<Employee>();
+                ResponseMessage = $"Found {employees.Count} employees.";
+            }
+
+            else if (command.Action.ToLower() == "update")
+            {
+                if (command.Fields.ContainsKey("id"))
+                {
+                    var id = Guid.Parse(command.Fields["id"].ToString());
+                    var employee = objectSpace.GetObjectByKey<Employee>(id);
+
+                    foreach (var field in command.Fields)
+                    {
+                        if (field.Key == "id") continue;
+
+                        var prop = typeof(Employee).GetProperty(field.Key);
+                        if (prop != null)
+                        {
+                            var value = Convert.ChangeType(field.Value, prop.PropertyType);
+                            prop.SetValue(employee, value);
+                        }
+                    }
+
+                    objectSpace.CommitChanges();
+                }
+            }
+
+            else if (command.Action.ToLower() == "delete")
+            {
+                var id = Guid.Parse(command.Fields["id"].ToString());
+                var employee = objectSpace.GetObjectByKey<Employee>(id);
+
+                objectSpace.Delete(employee);
+                objectSpace.CommitChanges();
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+}
+
