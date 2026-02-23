@@ -27,7 +27,7 @@ public class Project : BaseObject
 
     public virtual DateTime? EndDate { get; set; }
 
-    [Required]
+    
     public virtual Organization Organization { get; set; }
 
     public virtual Employee ProjectManager { get; set; }

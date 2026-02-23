@@ -1,6 +1,6 @@
 ﻿using System.Text;
 using System.Text.Json;
-
+using DevExpress.Data.Filtering;
 public class LangChainService
 {
     private readonly HttpClient _http;
@@ -34,4 +34,7 @@ public class CrudCommand
     public string Entity { get; set; }
     public string Action { get; set; }
     public Dictionary<string, object> Fields { get; set; }
+    public Dictionary<string, object> Filters { get; set; } 
+    public string LogicalOperator { get; set; } = "AND"; // AND / OR
+
 }
