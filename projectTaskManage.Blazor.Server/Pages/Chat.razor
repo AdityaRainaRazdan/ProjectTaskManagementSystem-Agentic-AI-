@@ -38,99 +38,215 @@
 
     private async Task ExecuteCrud(CrudCommand command)
     {
-        using var objectSpace = ObjectSpaceFactory.CreateObjectSpace(typeof(Employee));
+        var entityType = ResolveEntityType(command.Entity);
 
-        if (command.Entity.ToLower() == "employee")
+        if (entityType == null)
         {
-            if (command.Action.ToLower() == "create")
+            ResponseMessage = $"Unknown entity: {command.Entity}";
+            return;
+        }
+
+        using var objectSpace = ObjectSpaceFactory.CreateObjectSpace(entityType);
+
+        switch (command.Action.ToLower())
+        {
+            case "create":
+                await HandleCreate(command, entityType, objectSpace);
+                break;
+
+            case "read":
+                await HandleRead(entityType, objectSpace);
+                break;
+
+            case "update":
+                await HandleUpdate(command, entityType, objectSpace);
+                break;
+
+            case "delete":
+                await HandleDelete(command, entityType, objectSpace);
+                break;
+
+            default:
+                ResponseMessage = $"Unknown action: {command.Action}";
+                break;
+        }
+    }
+
+	// This method handles the "create" action by instantiating a new entity, setting its properties, and saving it to the database.
+    private async Task HandleCreate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    {
+        var entity = objectSpace.CreateObject(entityType);
+
+        foreach (var field in command.Fields)
+        {
+            var prop = entityType.GetProperty(
+                field.Key,
+                System.Reflection.BindingFlags.IgnoreCase |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.Instance
+            );
+
+            if (prop != null && field.Value != null)
+{
+    // If property is a class (navigation property)
+    if (!prop.PropertyType.IsPrimitive &&
+        prop.PropertyType != typeof(string) &&
+        !prop.PropertyType.IsEnum &&
+        !prop.PropertyType.IsValueType)
+    {
+        // Assume AI sends ID of related entity
+        var relatedId = Guid.Parse(field.Value.ToString());
+
+        var relatedObject = objectSpace.GetObjectByKey(
+            prop.PropertyType,
+            relatedId
+        );
+
+        if (relatedObject != null)
+        {
+            prop.SetValue(entity, relatedObject);
+        }
+        else
+        {
+            ResponseMessage = $"Related {prop.PropertyType.Name} not found.";
+            return;
+        }
+    }
+    else
+    {
+        var value = ConvertJsonValue(field.Value, prop.PropertyType);
+        prop.SetValue(entity, value);
+    }
+}
+
+        }
+
+        objectSpace.CommitChanges();
+        ResponseMessage = $"{command.Entity} created successfully.";
+        await Task.CompletedTask;
+    }
+
+
+	// This method handles the "read" action by retrieving all records of the specified entity type and returning them as a JSON string.
+    private async Task HandleRead(Type entityType, IObjectSpace objectSpace)
+    {
+        var objects = objectSpace.GetObjects(entityType);
+        ResponseMessage = $"Found {objects.Count} record(s).";
+        await Task.CompletedTask;
+    }
+
+
+	// This method handles the "update" action by finding an existing entity based on the provided criteria, updating its properties, and saving the changes to the database.
+    private async Task HandleUpdate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    {
+        if (!command.Fields.ContainsKey("id"))
+        {
+            ResponseMessage = "ID is required for update.";
+            return;
+        }
+
+        var id = Guid.Parse(command.Fields["id"].ToString());
+        var entity = objectSpace.GetObjectByKey(entityType, id);
+
+        if (entity == null)
+        {
+            ResponseMessage = "Record not found.";
+            return;
+        }
+
+        foreach (var field in command.Fields)
+        {
+            if (field.Key.ToLower() == "id") continue;
+
+            var prop = entityType.GetProperty(
+                field.Key,
+                System.Reflection.BindingFlags.IgnoreCase |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.Instance
+            );
+
+            if (prop != null && field.Value != null)
             {
-                var employee = objectSpace.CreateObject<Employee>();
-
-                foreach (var field in command.Fields)
-                {
-                    //  Map AI field names to actual property names
-                    string propertyName = field.Key.ToLower() switch
-                    {
-                        "name" => "FullName",
-                        "organization" => "Organization",
-                        _ => field.Key
-                    };
-
-                    var prop = typeof(Employee).GetProperty(
-    propertyName,
-    System.Reflection.BindingFlags.IgnoreCase |
-    System.Reflection.BindingFlags.Public |
-    System.Reflection.BindingFlags.Instance
-);
-
-                    if (prop != null && field.Value != null)
-                    {
-                        object rawValue = field.Value;
-
-                        if (rawValue is System.Text.Json.JsonElement jsonElement)
-                        {
-                            rawValue = jsonElement.ValueKind switch
-                            {
-                                System.Text.Json.JsonValueKind.String => jsonElement.GetString(),
-                                System.Text.Json.JsonValueKind.Number => jsonElement.GetDecimal(),
-                                System.Text.Json.JsonValueKind.True => true,
-                                System.Text.Json.JsonValueKind.False => false,
-                                _ => null
-                            };
-                        }
-
-                        if (rawValue != null)
-                        {
-                            var value = Convert.ChangeType(rawValue, prop.PropertyType);
-                            prop.SetValue(employee, value);
-                        }
-                    }
-                }
-
-                objectSpace.CommitChanges();
-            }
-
-
-            else if (command.Action.ToLower() == "read")
-            {
-                var employees = objectSpace.GetObjects<Employee>();
-                ResponseMessage = $"Found {employees.Count} employees.";
-            }
-
-            else if (command.Action.ToLower() == "update")
-            {
-                if (command.Fields.ContainsKey("id"))
-                {
-                    var id = Guid.Parse(command.Fields["id"].ToString());
-                    var employee = objectSpace.GetObjectByKey<Employee>(id);
-
-                    foreach (var field in command.Fields)
-                    {
-                        if (field.Key == "id") continue;
-
-                        var prop = typeof(Employee).GetProperty(field.Key);
-                        if (prop != null)
-                        {
-                            var value = Convert.ChangeType(field.Value, prop.PropertyType);
-                            prop.SetValue(employee, value);
-                        }
-                    }
-
-                    objectSpace.CommitChanges();
-                }
-            }
-
-            else if (command.Action.ToLower() == "delete")
-            {
-                var id = Guid.Parse(command.Fields["id"].ToString());
-                var employee = objectSpace.GetObjectByKey<Employee>(id);
-
-                objectSpace.Delete(employee);
-                objectSpace.CommitChanges();
+                var value = ConvertJsonValue(field.Value, prop.PropertyType);
+                prop.SetValue(entity, value);
             }
         }
 
+        objectSpace.CommitChanges();
+        ResponseMessage = $"{command.Entity} updated successfully.";
         await Task.CompletedTask;
     }
+
+
+	// This method handles the "delete" action by finding an existing entity based on the provided criteria and deleting it from the database.
+    private async Task HandleDelete(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    {
+        if (!command.Fields.ContainsKey("id"))
+        {
+            ResponseMessage = "ID is required for delete.";
+            return;
+        }
+
+        var id = Guid.Parse(command.Fields["id"].ToString());
+        var entity = objectSpace.GetObjectByKey(entityType, id);
+
+        if (entity == null)
+        {
+            ResponseMessage = "Record not found.";
+            return;
+        }
+
+        objectSpace.Delete(entity);
+        objectSpace.CommitChanges();
+
+        ResponseMessage = $"{command.Entity} deleted successfully.";
+        await Task.CompletedTask;
+    }
+
+
+    // This method converts a JSON value to the specified target type, handling common types such as string, int, bool, and DateTime.
+    private object ConvertJsonValue(object input, Type targetType)
+    {
+        if (input is System.Text.Json.JsonElement jsonElement)
+        {
+            switch (jsonElement.ValueKind)
+            {
+                case System.Text.Json.JsonValueKind.String:
+                    return Convert.ChangeType(jsonElement.GetString(), targetType);
+
+                case System.Text.Json.JsonValueKind.Number:
+                    if (targetType == typeof(int))
+                        return jsonElement.GetInt32();
+                    if (targetType == typeof(long))
+                        return jsonElement.GetInt64();
+                    if (targetType == typeof(decimal))
+                        return jsonElement.GetDecimal();
+                    if (targetType == typeof(double))
+                        return jsonElement.GetDouble();
+                    break;
+
+                case System.Text.Json.JsonValueKind.True:
+                case System.Text.Json.JsonValueKind.False:
+                    return jsonElement.GetBoolean();
+            }
+        }
+
+        return Convert.ChangeType(input, targetType);
+    }
+
+
+
+    private Type ResolveEntityType(string entityName)
+    {
+        return entityName.ToLower() switch
+        {
+            "employee" => typeof(Employee),
+            "project" => typeof(Project),
+            "task" => typeof(ProjectTask),
+            "projecttask" => typeof(ProjectTask),
+            _ => null
+        };
+    }
+
 }
 

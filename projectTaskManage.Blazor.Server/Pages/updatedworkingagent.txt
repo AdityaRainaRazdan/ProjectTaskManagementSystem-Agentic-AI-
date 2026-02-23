@@ -1,0 +1,507 @@
+@using DevExpress.ExpressApp
+@using projectTaskManage.Module.BusinessObjects
+@using System.Reflection
+@using DevExpress.Data.Filtering
+@using DevExpress.ExpressApp.DC
+@page "/Chats"
+
+@inject LangChainService LangChainService
+@inject IObjectSpaceFactory ObjectSpaceFactory
+@inject ILogger<Chat> Logger
+
+<h3> AI Admin Assistant</h3>
+
+<textarea @bind="UserMessage" rows="3" style="width:100%"></textarea>
+<button class="btn btn-primary mt-2" @onclick="SendMessage">Send</button>
+
+@if (ResponseMessage != null)
+{
+    <div class="mt-3 alert alert-info">
+        <strong>AI:</strong>
+        <pre>@ResponseMessage</pre>
+    </div>
+}
+
+@if (GridData != null && GridType != null)
+{
+    var props = GetSafeProperties(GridType);
+
+    <table class="table table-bordered table-striped mt-3">
+        <thead>
+            <tr>
+                @foreach (var prop in props)
+                {
+                    <th>@prop.Name</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in GridData)
+            {
+                <tr>
+                    @foreach (var prop in props)
+                    {
+                        <td>@GetSafeValue(prop, item)</td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+
+    private List<PropertyInfo> GetSafeProperties(Type type)
+    {
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p =>
+                p.CanRead &&
+                (
+                    p.PropertyType == typeof(string) ||
+                    !typeof(System.Collections.IEnumerable)
+                        .IsAssignableFrom(p.PropertyType)
+                )
+            )
+            .ToList();
+    }
+
+    private object GetSafeValue(PropertyInfo prop, object item)
+    {
+        try
+        {
+            return prop.GetValue(item);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    string UserMessage;
+    string ResponseMessage;
+
+    List<object> GridData;
+    Type GridType;
+
+    async Task SendMessage()
+    {
+        try
+        {
+            var result = await LangChainService.ParseAsync(UserMessage);
+
+            if (result == null)
+            {
+                ResponseMessage = "❌ Could not understand command.";
+                return;
+            }
+
+            await ExecuteCrud(result);
+
+            Logger.LogInformation("AI Command Executed: {@Command}", result);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "AI Execution Failed");
+            ResponseMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    // my AI Router which takes the parsed command and executes the appropriate CRUD operation
+    private async Task ExecuteCrud(CrudCommand command)
+    {
+        var entityType = ResolveEntityType(command.Entity);
+
+        if (entityType == null)
+        {
+            ResponseMessage = $"❌ Unknown entity: {command.Entity}";
+            return;
+        }
+
+        using var objectSpace = ObjectSpaceFactory.CreateObjectSpace(entityType);
+
+        switch (command.Action.ToLower())
+        {
+            case "create":
+                await HandleCreate(command, entityType, objectSpace);
+                break;
+
+            case "read":
+                await HandleRead(entityType, objectSpace);
+                break;
+
+            case "update":
+                await HandleUpdate(command, entityType, objectSpace);
+                break;
+
+            case "delete":
+                await HandleDelete(command, entityType, objectSpace);
+                break;
+
+            default:
+                ResponseMessage = $"❌ Unknown action: {command.Action}";
+                break;
+        }
+    }
+
+    // -------------------- CREATE --------------------
+    // my AI Create handler which uses smart property resolution and value conversion to create a new record based on the command fields
+    private async Task HandleCreate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    {
+        var entity = objectSpace.CreateObject(entityType);
+
+        foreach (var field in command.Fields)
+        {
+            var prop = ResolveProperty(entityType, field.Key);
+            if (prop == null) continue;
+
+            var value = ConvertJsonValue(field.Value, prop.PropertyType);
+            prop.SetValue(entity, value);
+        }
+
+        objectSpace.CommitChanges();
+
+        GridData = new List<object> { entity };
+        GridType = entityType;
+
+        ResponseMessage = $"✅ {command.Entity} created successfully.";
+        await Task.CompletedTask;
+    }
+
+    // -------------------- READ --------------------
+    // my AI Read handler which retrieves all records of the specified entity type and displays them in a grid
+    private async Task HandleRead(Type entityType, IObjectSpace objectSpace)
+    {
+        var objects = objectSpace.GetObjects(entityType);
+
+        GridData = objects.Cast<object>().ToList();
+        GridType = entityType;
+
+        ResponseMessage = $"📊 Found {GridData.Count} record(s).";
+        await Task.CompletedTask;
+    }
+
+    // -------------------- UPDATE --------------------
+    // my AI Update handler which applies filters based on the command fields to find matching records, updates their properties, and saves the changes
+
+
+    private async Task HandleUpdate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    {
+        var objects = objectSpace.GetObjects(entityType).Cast<object>().ToList();
+
+        var filtered = ApplyFilters(objects, command.Fields, entityType);
+
+        if (!filtered.Any())
+        {
+            ResponseMessage = "❌ No matching record found.";
+            return;
+        }
+
+        foreach (var entity in filtered)
+        {
+            foreach (var field in command.Fields)
+            {
+                var prop = ResolveProperty(entityType, field.Key);
+                if (prop == null) continue;
+
+                var value = ConvertJsonValue(field.Value, prop.PropertyType);
+                prop.SetValue(entity, value);
+            }
+        }
+
+        objectSpace.CommitChanges();
+
+        GridData = filtered;
+        GridType = entityType;
+
+        ResponseMessage = $"✏️ Updated {filtered.Count} record(s).";
+        await Task.CompletedTask;
+    }
+
+
+
+    // private async Task HandleUpdate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    // {
+    //     if (!command.Fields.ContainsKey("id"))
+    //     {
+    //         ResponseMessage = "❌ ID required for update.";
+    //         return;
+    //     }
+
+    //     var id = Guid.Parse(command.Fields["id"].ToString());
+    //     var entity = objectSpace.GetObjectByKey(entityType, id);
+
+    //     if (entity == null)
+    //     {
+    //         ResponseMessage = "❌ Record not found.";
+    //         return;
+    //     }
+
+    //     foreach (var field in command.Fields)
+    //     {
+    //         if (field.Key.ToLower() == "id") continue;
+
+    //         var prop = ResolveProperty(entityType, field.Key);
+    //         if (prop == null) continue;
+
+    //         var value = ConvertJsonValue(field.Value, prop.PropertyType);
+    //         prop.SetValue(entity, value);
+    //     }
+
+    //     objectSpace.CommitChanges();
+
+    //     GridData = new List<object> { entity };
+    //     GridType = entityType;
+
+    //     ResponseMessage = $"✏️ {command.Entity} updated successfully.";
+    //     await Task.CompletedTask;
+    // }
+
+
+
+    // -------------------- DELETE --------------------
+    // my AI Delete handler which applies filters based on the command fields to find matching records and deletes them from the database
+
+    private async Task HandleDelete(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    {
+        var objects = objectSpace.GetObjects(entityType).Cast<object>().ToList();
+
+        var filtered = ApplyFilters(objects, command.Fields, entityType);
+
+        if (!filtered.Any())
+        {
+            ResponseMessage = "❌ No matching record found.";
+            return;
+        }
+
+        foreach (var entity in filtered)
+        {
+            objectSpace.Delete(entity);
+        }
+
+        objectSpace.CommitChanges();
+
+        await HandleRead(entityType, objectSpace);
+
+        ResponseMessage = $"🗑️ Deleted {filtered.Count} record(s).";
+    }
+
+
+
+
+    // -------------------- SMART PROPERTY RESOLUTION --------------------
+
+    private PropertyInfo ResolveProperty(Type type, string fieldName)
+    {
+        var properties = type.GetProperties();
+
+        var cleanedField = Clean(fieldName);
+
+        // 1️⃣ Exact match
+        var exact = properties.FirstOrDefault(p =>
+            string.Equals(p.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+
+        if (exact != null)
+            return exact;
+
+        // 2️⃣ Cleaned match (remove spaces, case insensitive)
+        var cleanedMatch = properties.FirstOrDefault(p =>
+            Clean(p.Name) == cleanedField);
+
+        if (cleanedMatch != null)
+            return cleanedMatch;
+
+        // 3️⃣ Partial match (field contained in property)
+        var partial = properties.FirstOrDefault(p =>
+            Clean(p.Name).Contains(cleanedField));
+
+        if (partial != null)
+            return partial;
+
+        // 4️⃣ Reverse partial match (property contained in field)
+        partial = properties.FirstOrDefault(p =>
+            cleanedField.Contains(Clean(p.Name)));
+
+        if (partial != null)
+            return partial;
+
+        // 5️⃣ Smart "Name" logic (MOST IMPORTANT)
+        if (cleanedField == "name")
+        {
+            var nameProp = properties.FirstOrDefault(p =>
+                Clean(p.Name).Contains("name"));
+
+            if (nameProp != null)
+                return nameProp;
+        }
+
+        // 6️⃣ Fallback: First string property (AI heuristic)
+        var firstString = properties.FirstOrDefault(p =>
+            p.PropertyType == typeof(string));
+
+        return firstString;
+    }
+
+    private string Clean(string value)
+    {
+        return value?
+            .Replace(" ", "")
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace(".", "")
+            .ToLower()
+            .Trim();
+    }
+
+
+
+
+    // private PropertyInfo ResolveProperty(Type type, string fieldName)
+    // {
+    //     return type.GetProperties()
+    //         .FirstOrDefault(p =>
+    //             p.Name.Equals(fieldName, StringComparison.OrdinalIgnoreCase) ||
+    //             p.Name.Replace(" ", "")
+    //                 .Equals(fieldName.Replace(" ", ""), StringComparison.OrdinalIgnoreCase));
+    // }
+
+
+
+
+    // -------------------- SMART VALUE CONVERSION --------------------
+
+    private object ConvertJsonValue(object input, Type targetType)
+    {
+        if (input == null)
+            return null;
+
+        if (input is System.Text.Json.JsonElement json)
+        {
+            if (json.ValueKind == System.Text.Json.JsonValueKind.String)
+                input = json.GetString();
+
+            if (json.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                if (targetType == typeof(int)) return json.GetInt32();
+                if (targetType == typeof(long)) return json.GetInt64();
+                if (targetType == typeof(decimal)) return json.GetDecimal();
+                if (targetType == typeof(double)) return json.GetDouble();
+            }
+
+            if (json.ValueKind == System.Text.Json.JsonValueKind.True ||
+                json.ValueKind == System.Text.Json.JsonValueKind.False)
+                return json.GetBoolean();
+        }
+
+        if (targetType.IsEnum)
+        {
+            var names = Enum.GetNames(targetType);
+
+            var match = names.FirstOrDefault(e =>
+                e.Equals(input.ToString(), StringComparison.OrdinalIgnoreCase) ||
+                e.Contains(input.ToString(), StringComparison.OrdinalIgnoreCase));
+
+            if (match != null)
+                return Enum.Parse(targetType, match);
+
+            ResponseMessage = $"⚠ Invalid enum value. Allowed: {string.Join(", ", names)}";
+            return null;
+        }
+
+        return Convert.ChangeType(input, targetType);
+    }
+
+    // -------------------- DYNAMIC ENTITY RESOLUTION --------------------
+	// my AI Entity Resolver which uses a multi-step approach to find the best matching entity type based on the command input, allowing for flexible naming and partial matches
+    private Type ResolveEntityType(string entityName)
+    {
+        if (string.IsNullOrWhiteSpace(entityName))
+            return null;
+
+        var cleanedInput = Clean(entityName);
+
+        var types = XafTypesInfo.Instance.PersistentTypes
+            .Select(t => t.Type)
+            .ToList();
+
+        // 1️⃣ Exact match
+        var exact = types.FirstOrDefault(t =>
+            t.Name.Equals(entityName, StringComparison.OrdinalIgnoreCase));
+
+        if (exact != null)
+            return exact;
+
+        // 2️⃣ Cleaned match
+        var cleanedMatch = types.FirstOrDefault(t =>
+            Clean(t.Name) == cleanedInput ||
+            Clean(t.Name) == cleanedInput.TrimEnd('s'));
+
+        if (cleanedMatch != null)
+            return cleanedMatch;
+
+        // 3️⃣ Partial match
+        return types.FirstOrDefault(t =>
+            Clean(t.Name).Contains(cleanedInput) ||
+            cleanedInput.Contains(Clean(t.Name)));
+    }
+
+	// -------------------- DYNAMIC FILTERING --------------------
+	// my AI Filter Applier which takes a list of objects and applies dynamic filters based on the command fields, allowing for flexible searching and matching of records without requiring strict ID-based lookups
+    private List<object> ApplyFilters(
+    List<object> objects,
+    Dictionary<string, object> fields,
+    Type entityType)
+    {
+        var filtered = objects;
+
+        foreach (var field in fields)
+        {
+            var prop = ResolveProperty(entityType, field.Key);
+            if (prop == null) continue;
+
+            var valueToMatch = field.Value?.ToString()?.ToLower();
+
+            filtered = filtered.Where(obj =>
+            {
+                var propValue = prop.GetValue(obj)?.ToString()?.ToLower();
+                return propValue != null && propValue.Contains(valueToMatch);
+            }).ToList();
+        }
+
+        return filtered;
+    }
+
+
+	// This method builds a CriteriaOperator based on the command filters, allowing for more efficient database querying when updating or deleting records. It constructs a dynamic filter expression that can be applied to the object space to find matching records.
+    private CriteriaOperator BuildCriteria(
+    CrudCommand command,
+    Type entityType)
+    {
+        CriteriaOperator criteria = null;
+
+        foreach (var filter in command.Filters)
+        {
+            var prop = ResolveProperty(entityType, filter.Key);
+            if (prop == null) continue;
+
+            var condition = new BinaryOperator(
+                prop.Name,
+                filter.Value,
+                BinaryOperatorType.Equal);
+
+            if (criteria == null)
+            {
+                criteria = condition;
+            }
+            else
+            {
+                criteria = command.LogicalOperator == "OR"
+                    ? CriteriaOperator.Or(criteria, condition)
+                    : CriteriaOperator.And(criteria, condition);
+            }
+        }
+
+        return criteria;
+    }
+
+
+}
