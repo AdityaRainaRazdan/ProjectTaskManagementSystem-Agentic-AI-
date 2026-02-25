@@ -30,6 +30,7 @@ namespace projectTaskManage.Blazor.Server
             services.AddHttpClient<LangChainService>();
             services.AddRazorPages();
             services.AddServerSideBlazor();
+            services.AddSignalR();
             services.AddHttpContextAccessor();
             services.AddScoped<CircuitHandler, CircuitHandlerProxy>();
             services.AddXaf(Configuration, builder =>
@@ -171,6 +172,7 @@ namespace projectTaskManage.Blazor.Server
             {
                 endpoints.MapXafEndpoints();
                 endpoints.MapBlazorHub();
+                endpoints.MapHub<SupportHub>("/supporthub");
                 endpoints.MapFallbackToPage("/_Host");
                 endpoints.MapControllers();
             });
