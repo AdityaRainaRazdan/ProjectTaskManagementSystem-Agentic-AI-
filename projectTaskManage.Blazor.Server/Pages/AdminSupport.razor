@@ -1,0 +1,27 @@
+﻿@page "/AdminSupport"
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthProvider
+
+<h3>Live Support Requests</h3>
+
+<ul id="supportList"></ul>
+
+<video id="adminVideo"
+       autoplay
+       style="width:800px;border:1px solid black">
+</video>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("support.initialize");
+
+            // small delay ensures connection.start completed
+            await Task.Delay(500);
+
+            await JS.InvokeVoidAsync("support.registerAdmin");
+        }
+    }
+}
