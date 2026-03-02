@@ -1,5 +1,11 @@
 html, body {
     height: 100%;
+    margin: 0;
+}
+
+#root, .app-container {
+    height: 100%;
+    width: 100%;
 }
 
 app {
@@ -34,12 +40,13 @@ app {
     display: flex;
     flex-direction: column;
     height: 90vh;
-    max-width: 1200px;
-    margin: auto;
+    max-width: 100%;
+    margin: 0;
     background: #f9fafc;
     border-radius: 12px;
     box-shadow: 0 8px 25px rgba(0,0,0,0.05);
     overflow: hidden;
+    min-height: 100vh;
 }
 
 /* Header */
@@ -205,3 +212,59 @@ app {
     .custom-table tbody tr:hover {
         background-color: #f9fafb;
     }
+
+
+
+.full-page {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    overflow: hidden;
+}
+
+.loading-card {
+    opacity: 0.9;
+}
+
+.thinking {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.dot {
+    width: 6px;
+    height: 6px;
+    background-color: #4f6df5;
+    border-radius: 50%;
+    animation: blink 1.4s infinite both;
+}
+
+    .dot:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .dot:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+@keyframes blink {
+    0% {
+        opacity: .2;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: .2;
+    }
+}
