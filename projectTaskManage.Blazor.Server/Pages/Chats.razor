@@ -22,13 +22,32 @@
         </textarea>
 
         <button class="send-btn"
-                @onclick="SendMessage">
-            Send
+                @onclick="SendMessage"
+                disabled="@IsLoading">
+            @if (IsLoading)
+            {
+                <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+            else
+            {
+                <span>Send</span>
+            }
         </button>
     </div>
     <!-- Chat Body -->
     <div class="chat-body">
-
+        @if (IsLoading)
+        {
+            <div class="ai-response-card loading-card">
+                <div class="ai-label">AI Assistant</div>
+                <div class="thinking">
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    Thinking...
+                </div>
+            </div>
+        }
         @if (!string.IsNullOrWhiteSpace(ResponseMessage))
         {
             <div class="ai-response-card">
@@ -184,14 +203,25 @@
 
     string UserMessage;
     string ResponseMessage;
+    bool IsLoading = false;
 
     List<object> GridData;
     Type GridType;
 
     async Task SendMessage()
     {
+        if (IsLoading || string.IsNullOrWhiteSpace(UserMessage))
+            return;
+
         try
         {
+            IsLoading = true;
+            ResponseMessage = null;
+            GridData = null;
+            GridType = null;
+
+            StateHasChanged(); // 🔥 Force UI refresh immediately
+
             var result = await LangChainService.ParseAsync(UserMessage);
 
             if (result == null)
@@ -208,6 +238,11 @@
         {
             Logger.LogError(ex, "AI Execution Failed");
             ResponseMessage = $"❌ Error: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged(); // 🔥 Refresh again
         }
     }
 
@@ -428,8 +463,10 @@
                     var propType = prop.PropertyType;
 
                     // 🔥 COLLECTION HANDLING (Tasks, Files, etc.)
-                    if (typeof(System.Collections.IEnumerable).IsAssignableFrom(propType)
-                        && propType != typeof(string))
+                    // 🔥 SAFE COLLECTION HANDLING (Only Generic Collections)
+                    if (propType.IsGenericType &&
+                        typeof(System.Collections.IEnumerable).IsAssignableFrom(propType) &&
+                        propType != typeof(string))
                     {
                         HandleCollectionAssignment(
                             entity,
@@ -438,10 +475,8 @@
                             objectSpace);
                     }
                     // 🔥 REFERENCE HANDLING (Organization, User, etc.)
-                    else if (!propType.IsPrimitive &&
-                             propType != typeof(string) &&
-                             !propType.IsEnum &&
-                             !propType.IsValueType)
+                    else if (propType.IsClass &&
+         propType != typeof(string))
                     {
                         var relatedObject = FindRelatedObject(
                             propType,
@@ -536,10 +571,12 @@
 
         if (collection == null) return;
 
+        if (!collectionProperty.PropertyType.IsGenericType)
+            return;
+
         var itemType = collectionProperty.PropertyType
             .GetGenericArguments()
-            .FirstOrDefault();
-
+            .First();
         if (itemType == null) return;
 
         var relatedObject = FindRelatedObject(
