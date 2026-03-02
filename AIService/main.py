@@ -54,9 +54,6 @@ Rules:
 - Never mix fields and filters
 - If no WHERE provided for update/delete ? filters must be empty
 - If user says "assign", treat it as UPDATE
-- If updating a collection property (like Tasks),
-  do NOT update the parent entity.
-  Instead update the child entity and set its navigation property.
 - If assigning a related entity (like Employee, Organization),
   use the correct navigation property name in fields
 - Never return explanation
@@ -72,6 +69,17 @@ Output:
   "filters":{{"name":"John"}},
   "logicalOperator":"AND"
 }}
+
+User: update ProjectTask andriod as android
+Output:
+{{
+  "entity":"projecttask",
+  "action":"update",
+  "fields":{{"name":"android"}},
+  "filters":{{"name":"andriod"}},
+  "logicalOperator":"AND"
+}}
+
 
 User: assign projecttask named aitool to employee virat
 Output:
