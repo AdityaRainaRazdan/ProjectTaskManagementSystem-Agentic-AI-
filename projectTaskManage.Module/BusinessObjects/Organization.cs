@@ -18,8 +18,8 @@ public class Organization : BaseObject
 
     public virtual string Code { get; set; }
 
-    [DevExpress.Xpo.Association("Organization-Employees")]
-    public virtual IList<Employee>Employees { get; set; }=new ObservableCollection<Employee>();
+    //[DevExpress.Xpo.Association("Organization-Employees")]
+    public virtual ObservableCollection<Employee>Employees { get; set; }
 
     //one organization -> Many Projects
     [DevExpress.Xpo.Association("Organization-Projects")]

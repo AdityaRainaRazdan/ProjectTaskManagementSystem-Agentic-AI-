@@ -15,17 +15,6 @@
     <base href="~/" />
     <component type="typeof(BootstrapThemeLink)" render-mode="Static" />
 </head>
-<script>
-    (function(w,t,c,p,s,e){p=new Promise(function(r){w[c]={client:function(){if(!s){
-    s=document.createElement(t);s.src='https://js.cobrowse.io/CobrowseIO.js';s.async=1;s.crossOrigin='anonymous';
-    e=document.getElementsByTagName(t)[0];e.parentNode.insertBefore(s,e);s.onload=function()
-    {r(w[c]);};}return p;}};});})(window,'script','CobrowseIO');
-
-    CobrowseIO.license = "ykmi85J9wt8l3A";    
-    CobrowseIO.client().then(function(){
-        CobrowseIO.start();
-    });
-</script>
 @* <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script> *@
 @* <script src="js/support.js"></script> *@
 <body>
@@ -35,7 +24,7 @@
     <component type="typeof(SplashScreen)" render-mode="Static" param-Caption='"projectTaskManage"' param-ImagePath='"images/SplashScreen.svg"' />
 
     <link href="_content/DevExpress.ExpressApp.Blazor/styles.css" asp-append-version="true" rel="stylesheet" />
-    <link href="css/site.css" rel="stylesheet" asp-append-version="true" />
+    <link href="css/site.css" rel="stylesheet" />
     <!-- Uncomment this link to enable CSS isolation. For more information, refer to the following topic: https://learn.microsoft.com/en-us/aspnet/core/blazor/components/css-isolation -->
     <!-- <link href="projectTaskManage.Blazor.Server.styles.css" rel="stylesheet"> -->
 

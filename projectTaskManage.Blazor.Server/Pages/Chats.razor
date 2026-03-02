@@ -1,67 +1,93 @@
-﻿@using DevExpress.ExpressApp
-@using projectTaskManage.Module.BusinessObjects
-@using System.Reflection
+﻿@page "/Chats"
 @using DevExpress.Data.Filtering
-@using DevExpress.ExpressApp.DC
-@page "/Chats"
-
+@using DevExpress.ExpressApp
+@using System.Reflection
 @inject LangChainService LangChainService
 @inject IObjectSpaceFactory ObjectSpaceFactory
 @inject ILogger<Chat> Logger
 
-<h3> AI  Assistant</h3>
+<div class="chat-wrapper">
 
-<textarea @bind="UserMessage" rows="3" style="width:100%"></textarea>
-<button class="btn btn-primary mt-2" @onclick="SendMessage">Send</button>
-
-@if (ResponseMessage != null)
-{
-    <div class="mt-3 alert alert-info">
-        <strong>AI:</strong>
-        <pre>@ResponseMessage</pre>
+    <!-- Header -->
+    <div class="chat-header">
+        <h4>🤖 AI Assistant</h4>
+        <span class="subtitle">Natural Language CRUD for XAF</span>
     </div>
-}
+    <!-- Input Area -->
+    <div class="chat-input-area">
+        <textarea @bind="UserMessage"
+                  placeholder="Type your command... (e.g., create employee named John)"
+                  rows="2"
+                  class="chat-textarea">
+        </textarea>
 
-@if (GridData != null && GridType != null)
-{
-    var props = GetSafeProperties(GridType);
+        <button class="send-btn"
+                @onclick="SendMessage">
+            Send
+        </button>
+    </div>
+    <!-- Chat Body -->
+    <div class="chat-body">
 
-    <table class="table table-bordered table-striped mt-3">
-        <thead>
-            <tr>
-                @foreach (var prop in props)
-                {
-                    <th>@prop.Name</th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in GridData)
-            {
-                <tr>
-                    @foreach (var prop in props)
-                    {
-                        <td>@GetSafeValue(prop, item)</td>
-                    }
-                </tr>
-            }
-        </tbody>
-    </table>
-}
+        @if (!string.IsNullOrWhiteSpace(ResponseMessage))
+        {
+            <div class="ai-response-card">
+                <div class="ai-label">AI Response</div>
+                <pre>@ResponseMessage</pre>
+            </div>
+        }
+
+        @if (GridData != null && GridType != null)
+        {
+            var props = GetSafeProperties(GridType);
+
+            <div class="grid-card">
+
+                <div class="grid-title">
+                    📊  @GridType.Name - @GridData.Count record(s)
+                </div>
+
+                <div class="table-wrapper">
+                <div class="table-responsive">
+                    <table class="table table-hover custom-table">
+                        <thead>
+                            <tr>
+                                @foreach (var prop in props)
+                                {
+                                    <th>@prop.Name</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in GridData)
+                            {
+                                <tr>
+                                    @foreach (var prop in props)
+                                    {
+                                        <td>@GetSafeValue(prop, item)</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                </div>
+            </div>
+        }
+
+    </div>
+</div>
 
 @code {
 
     private List<PropertyInfo> GetSafeProperties(Type type)
     {
-        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        return type.GetProperties()
             .Where(p =>
                 p.CanRead &&
-                (
-                    p.PropertyType == typeof(string) ||
-                    !typeof(System.Collections.IEnumerable)
-                        .IsAssignableFrom(p.PropertyType)
-                )
-            )
+                p.Name != "GCRecord" &&
+                p.Name != "OptimisticLockField" &&
+                p.Name != "Oid")
             .ToList();
     }
 
@@ -69,7 +95,86 @@
     {
         try
         {
-            return prop.GetValue(item);
+            var value = prop.GetValue(item);
+
+            if (value == null)
+                return null;
+
+            // 🔥 COLLECTION HANDLING
+            if (value is System.Collections.IEnumerable enumerable &&
+                !(value is string))
+            {
+                var list = enumerable.Cast<object>().ToList();
+                if (!list.Any()) return "[]";
+
+                var displayValues = list.Select(x =>
+                {
+                    // 🔥 Smart fallback for XAF proxy objects
+
+                    var realType = x.GetType().BaseType ?? x.GetType();
+
+                    // 1️⃣ Try common display fields
+                    var smartDisplayProp = realType.GetProperties()
+                        .FirstOrDefault(p =>
+                            p.PropertyType == typeof(string) &&
+                            !string.IsNullOrWhiteSpace(p.GetValue(x)?.ToString()));
+
+                    if (smartDisplayProp != null)
+                    {
+                        return smartDisplayProp.GetValue(x)?.ToString();
+                    }
+
+                    // 2️⃣ Try Oid / ID
+                    var idProp = realType.GetProperty("Oid") ??
+                                 realType.GetProperty("ID") ??
+                                 realType.GetProperty("Id");
+
+                    if (idProp != null)
+                    {
+                        var idVal = idProp.GetValue(x)?.ToString();
+                        if (!string.IsNullOrWhiteSpace(idVal))
+                            return idVal;
+                    }
+
+                    // 3️⃣ Final safe fallback
+                    return "[Related Item]";
+                })
+                .Where(v => !string.IsNullOrWhiteSpace(v));
+
+                return string.Join(", ", displayValues);
+            }
+
+            // 🔥 REFERENCE HANDLING
+            if (!prop.PropertyType.IsPrimitive &&
+                prop.PropertyType != typeof(string) &&
+                !prop.PropertyType.IsValueType)
+            {
+                var nameProp = prop.PropertyType
+                    .GetProperties()
+                    .FirstOrDefault(p =>
+                        p.PropertyType == typeof(string) &&
+                        p.Name.ToLower().Contains("name"));
+
+                if (nameProp != null)
+                {
+                    var displayVal = nameProp.GetValue(value)?.ToString();
+                    if (!string.IsNullOrWhiteSpace(displayVal))
+                        return displayVal;
+                }
+
+                // fallback to Oid
+                var idProp = value.GetType().GetProperty("Oid") ??
+                             value.GetType().GetProperty("ID");
+
+                if (idProp != null)
+                {
+                    return idProp.GetValue(value)?.ToString();
+                }
+
+                return "[Reference]";
+            }
+
+            return value;
         }
         catch
         {
@@ -152,48 +257,145 @@
 
     // -------------------- CREATE --------------------
     // my AI Create handler which uses smart property resolution and value conversion to create a new record based on the command fields
-    private async Task HandleCreate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    // private async Task HandleCreate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    // {
+    //     var entity = objectSpace.CreateObject(entityType);
+
+    //     foreach (var field in command.Fields)
+    //     {
+    //         var prop = ResolveProperty(entityType, field.Key);
+    //         if (prop == null) continue;
+
+    //         var value = ConvertJsonValue(field.Value, prop.PropertyType);
+    //         prop.SetValue(entity, value);
+    //     }
+
+    //     objectSpace.CommitChanges();
+
+    //     GridData = new List<object> { entity };
+    //     GridType = entityType;
+
+    //     ResponseMessage = $"✅ {command.Entity} created successfully.";
+    //     await Task.CompletedTask;
+    // }
+
+    private async Task HandleCreate(
+    CrudCommand command,
+    Type entityType,
+    IObjectSpace objectSpace)
     {
-        var entity = objectSpace.CreateObject(entityType);
-
-        foreach (var field in command.Fields)
+        try
         {
-            var prop = ResolveProperty(entityType, field.Key);
-            if (prop == null) continue;
+            var entity = objectSpace.CreateObject(entityType);
 
-            var value = ConvertJsonValue(field.Value, prop.PropertyType);
-            prop.SetValue(entity, value);
+            foreach (var field in command.Fields)
+            {
+                var prop = ResolveProperty(entityType, field.Key);
+                if (prop == null) continue;
+
+                var propType = prop.PropertyType;
+
+                // 🔥 Reference handling (Organization, ProjectManager)
+                if (!propType.IsPrimitive &&
+                    propType != typeof(string) &&
+                    !propType.IsEnum &&
+                    !propType.IsValueType)
+                {
+                    var related = FindRelatedObject(
+                        propType,
+                        field.Value?.ToString(),
+                        objectSpace);
+
+                    if (related != null)
+                        prop.SetValue(entity, related);
+                }
+                else
+                {
+                    var value = ConvertJsonValue(field.Value, propType);
+                    prop.SetValue(entity, value);
+                }
+            }
+
+            // 🔥 Auto set StartDate if missing
+            var startDateProp = entityType.GetProperty("StartDate");
+            if (startDateProp != null)
+            {
+                var currentValue = startDateProp.GetValue(entity);
+
+                if (currentValue is DateTime dt && dt == default)
+                {
+                    startDateProp.SetValue(entity, DateTime.Now);
+                }
+            }
+
+            objectSpace.CommitChanges();
+
+            GridData = new List<object> { entity };
+            GridType = entityType;
+
+            ResponseMessage = $"✅ {command.Entity} created successfully.";
+        }
+        catch (Exception ex)
+        {
+            objectSpace.Rollback();
+            ResponseMessage = $"❌ Create failed: {ex.InnerException?.Message ?? ex.Message}";
         }
 
-        objectSpace.CommitChanges();
-
-        GridData = new List<object> { entity };
-        GridType = entityType;
-
-        ResponseMessage = $"✅ {command.Entity} created successfully.";
         await Task.CompletedTask;
     }
+
+
 
     // -------------------- READ --------------------
     // my AI Read handler which retrieves all records of the specified entity type and displays them in a grid
     private async Task HandleRead(Type entityType, IObjectSpace objectSpace)
     {
-        var objects = objectSpace.GetObjects(entityType);
+        var objects = objectSpace
+            .GetObjects(entityType)
+            .Cast<object>()
+            .ToList();
 
-        GridData = objects.Cast<object>().ToList();
+        foreach (var obj in objects)
+        {
+            foreach (var prop in entityType.GetProperties())
+            {
+                var value = prop.GetValue(obj);
+
+                // 🔥 Force load reference objects
+                if (value != null &&
+                    !prop.PropertyType.IsPrimitive &&
+                    prop.PropertyType != typeof(string) &&
+                    !prop.PropertyType.IsValueType)
+                {
+                    _ = value.ToString();
+                }
+
+                // 🔥 Force load collections
+                if (value is System.Collections.IEnumerable enumerable &&
+                    !(value is string))
+                {
+                    var list = enumerable.Cast<object>().ToList();
+                }
+            }
+        }
+
+        GridData = objects;
         GridType = entityType;
 
         ResponseMessage = $"📊 Found {GridData.Count} record(s).";
+
         await Task.CompletedTask;
     }
-
 
 
     // -------------------- UPDATE --------------------
     // my AI Update handler which applies filters based on the command fields to find matching records, updates their properties, and saves the changes
 
 
-    private async Task HandleUpdate(CrudCommand command, Type entityType, IObjectSpace objectSpace)
+    private async Task HandleUpdate(
+        CrudCommand command,
+        Type entityType,
+        IObjectSpace objectSpace)
     {
         try
         {
@@ -223,8 +425,38 @@
                     var prop = ResolveProperty(entityType, field.Key);
                     if (prop == null) continue;
 
-                    var value = ConvertJsonValue(field.Value, prop.PropertyType);
-                    prop.SetValue(entity, value);
+                    var propType = prop.PropertyType;
+
+                    // 🔥 COLLECTION HANDLING (Tasks, Files, etc.)
+                    if (typeof(System.Collections.IEnumerable).IsAssignableFrom(propType)
+                        && propType != typeof(string))
+                    {
+                        HandleCollectionAssignment(
+                            entity,
+                            prop,
+                            field.Value,
+                            objectSpace);
+                    }
+                    // 🔥 REFERENCE HANDLING (Organization, User, etc.)
+                    else if (!propType.IsPrimitive &&
+                             propType != typeof(string) &&
+                             !propType.IsEnum &&
+                             !propType.IsValueType)
+                    {
+                        var relatedObject = FindRelatedObject(
+                            propType,
+                            field.Value?.ToString(),
+                            objectSpace);
+
+                        if (relatedObject != null)
+                            prop.SetValue(entity, relatedObject);
+                    }
+                    // 🔥 SIMPLE PROPERTY
+                    else
+                    {
+                        var value = ConvertJsonValue(field.Value, propType);
+                        prop.SetValue(entity, value);
+                    }
                 }
             }
 
@@ -245,9 +477,88 @@
     }
 
 
+    private object FindRelatedObject(
+    Type targetType,
+    string value,
+    IObjectSpace objectSpace)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        // Try string display property first
+        var stringProp = targetType.GetProperties()
+            .FirstOrDefault(p =>
+                p.PropertyType == typeof(string));
+
+        if (stringProp != null)
+        {
+            var criteria = new BinaryOperator(
+                stringProp.Name,
+                value,
+                BinaryOperatorType.Equal);
+
+            return objectSpace
+                .GetObjects(targetType, criteria)
+                .Cast<object>()
+                .FirstOrDefault();
+        }
+
+        // Fallback: try Oid
+        var idProp = targetType.GetProperty("Oid")
+                   ?? targetType.GetProperty("Id");
+
+        if (idProp != null)
+        {
+            var converted = Convert.ChangeType(value, idProp.PropertyType);
+
+            var criteria = new BinaryOperator(
+                idProp.Name,
+                converted,
+                BinaryOperatorType.Equal);
+
+            return objectSpace
+                .GetObjects(targetType, criteria)
+                .Cast<object>()
+                .FirstOrDefault();
+        }
+
+        return null;
+    }
+
+    private void HandleCollectionAssignment(
+    object parent,
+    PropertyInfo collectionProperty,
+    object value,
+    IObjectSpace objectSpace)
+    {
+        var collection = collectionProperty.GetValue(parent)
+            as System.Collections.IList;
+
+        if (collection == null) return;
+
+        var itemType = collectionProperty.PropertyType
+            .GetGenericArguments()
+            .FirstOrDefault();
+
+        if (itemType == null) return;
+
+        var relatedObject = FindRelatedObject(
+            itemType,
+            value?.ToString(),
+            objectSpace);
+
+        if (relatedObject == null) return;
+
+        if (!collection.Contains(relatedObject))
+        {
+            collection.Add(relatedObject);
+        }
+    }
 
 
-    
+
+
+
 
 
 
@@ -428,6 +739,42 @@
             return null;
         }
 
+        // 🔥 Handle XAF Reference Objects
+        if (!targetType.IsPrimitive &&
+            targetType != typeof(string) &&
+            !targetType.IsEnum &&
+            !targetType.IsValueType)
+        {
+            using var lookupObjectSpace = ObjectSpaceFactory.CreateObjectSpace(targetType);
+
+            var nameProp = targetType.GetProperties()
+                .FirstOrDefault(p => p.PropertyType == typeof(string) &&
+                                     p.Name.ToLower().Contains("name"));
+
+            if (nameProp != null)
+            {
+                var criteria = new BinaryOperator(
+                    nameProp.Name,
+                    input.ToString(),
+                    BinaryOperatorType.Equal);
+
+                var found = lookupObjectSpace
+                    .GetObjects(targetType, criteria)
+                    .Cast<object>()
+                    .FirstOrDefault();
+
+                return found;
+            }
+        }
+        // ✅ HANDLE GUID PROPERLY
+        if (targetType == typeof(Guid))
+        {
+            if (Guid.TryParse(input.ToString(), out var guidValue))
+                return guidValue;
+
+            ResponseMessage = "❌ Invalid GUID format.";
+            return null;
+        }
         return Convert.ChangeType(input, targetType);
     }
 
@@ -493,8 +840,8 @@
 
 
     // This method builds a CriteriaOperator based on the command filters, allowing for more efficient database querying when updating or deleting records. It constructs a dynamic filter expression that can be applied to the object space to find matching records.
-    
-    
+
+
     private CriteriaOperator BuildCriteria(
     CrudCommand command,
     Type entityType)
@@ -529,7 +876,7 @@
         return criteria;
     }
 
-    
+
     // private CriteriaOperator BuildCriteria(
     // CrudCommand command,
     // Type entityType)

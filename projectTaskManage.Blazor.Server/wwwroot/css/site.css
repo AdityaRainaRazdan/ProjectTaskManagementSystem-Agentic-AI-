@@ -29,3 +29,179 @@ app {
     height: 100%;
     z-index: 100001;
 }
+
+.chat-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 90vh;
+    max-width: 1200px;
+    margin: auto;
+    background: #f9fafc;
+    border-radius: 12px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+/* Header */
+.chat-header {
+    padding: 20px;
+    background: linear-gradient(90deg, #4e73df, #224abe);
+    color: white;
+}
+
+.chat-header h4 {
+    margin: 0;
+    font-weight: 600;
+}
+
+.chat-header .subtitle {
+    font-size: 13px;
+    opacity: 0.9;
+}
+
+/* Body */
+.chat-body {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+/* AI Response Card */
+.ai-response-card {
+    background: white;
+    padding: 18px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+    border-left: 4px solid #4e73df;
+    color: #333;
+}
+
+.ai-label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #4e73df;
+}
+
+.ai-response-card pre {
+    white-space: pre-wrap;
+    margin: 0;
+    font-size: 14px;
+    color: #000;
+}
+
+.table-responsive {
+    color: #000;
+}
+
+.grid-entity-name{
+    font-weight: 800;
+    color: #000;
+    margin-bottom: 8px;
+}
+/* Grid Card */
+.grid-card {
+    background: white;
+    padding: 18px;
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+}
+
+.grid-title {
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #4e73df;
+}
+
+/* Table Styling */
+.custom-table {
+    font-size: 14px;
+}
+
+
+.custom-table thead {
+    background-color: #f1f3f9;
+}
+
+.custom-table th {
+    font-weight: 600;
+}
+
+.custom-table td {
+    vertical-align: middle;
+}
+
+/* Input Area */
+.chat-input-area {
+    display: flex;
+    gap: 10px;
+    padding: 15px;
+    background: white;
+    border-top: 1px solid #e3e6f0;
+}
+
+.chat-textarea {
+    flex: 1;
+    resize: none;
+    border-radius: 8px;
+    border: 1px solid #ced4da;
+    padding: 10px;
+    font-size: 14px;
+}
+
+.chat-textarea:focus {
+    outline: none;
+    border-color: #4e73df;
+    box-shadow: 0 0 0 2px rgba(78,115,223,0.1);
+}
+
+.send-btn {
+    background: #4e73df;
+    border: none;
+    color: white;
+    padding: 0 20px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: 0.2s ease;
+}
+
+.send-btn:hover {
+    background: #2e59d9;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    margin-top: 20px;
+    border-radius: 10px;
+}
+
+/* Improve table spacing */
+.custom-table {
+    width: 100%;
+    border-collapse: separate; /* IMPORTANT */
+    border-spacing: 0;
+}
+
+    /* Header styling */
+    .custom-table th {
+        padding: 14px 22px; /* ?? spacing inside header */
+        text-align: left;
+        background-color: #f1f5f9;
+        color: #111827;
+        font-weight: 600;
+        border-bottom: 2px solid #e5e7eb;
+        white-space: nowrap;
+    }
+
+    /* Cell styling */
+    .custom-table td {
+        padding: 14px 22px; /* ?? spacing inside cells */
+        color: #111827;
+        border-bottom: 1px solid #f1f1f1;
+        white-space: nowrap;
+    }
+
+    /* Row hover effect */
+    .custom-table tbody tr:hover {
+        background-color: #f9fafb;
+    }
