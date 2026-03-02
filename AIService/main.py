@@ -53,17 +53,33 @@ Rules:
 - UPDATE/DELETE ? extract WHERE conditions into filters
 - Never mix fields and filters
 - If no WHERE provided for update/delete ? filters must be empty
+- If user says "assign", treat it as UPDATE
+- If updating a collection property (like Tasks),
+  do NOT update the parent entity.
+  Instead update the child entity and set its navigation property.
+- If assigning a related entity (like Employee, Organization),
+  use the correct navigation property name in fields
 - Never return explanation
 
 Examples:
 
-User: update employees set email=abc@gmail.com where name=John
+User: update employees set email as abc@gmail.com where name is John
 Output:
 {{
   "entity":"Employee",
   "action":"update",
   "fields":{{"email":"abc@gmail.com"}},
   "filters":{{"name":"John"}},
+  "logicalOperator":"AND"
+}}
+
+User: assign projecttask named aitool to employee virat
+Output:
+{{
+  "entity":"ProjectTask",
+  "action":"update",
+  "fields":{{"AssignedTo":"virat"}},
+  "filters":{{"Title":"aitool"}},
   "logicalOperator":"AND"
 }}
 
